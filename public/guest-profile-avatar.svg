@@ -1,0 +1,87 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1024 1024" role="img" aria-labelledby="title desc">
+  <title id="title">Guest profile avatar</title>
+  <desc id="desc">A smiling child with brown hair, a blue hoodie, and a soft purple circular background.</desc>
+  <defs>
+    <radialGradient id="bg" cx="50%" cy="38%" r="63%">
+      <stop offset="0%" stop-color="#eee8ff"/>
+      <stop offset="100%" stop-color="#c7b8f6"/>
+    </radialGradient>
+    <linearGradient id="skin" x1="512" y1="338" x2="512" y2="764" gradientUnits="userSpaceOnUse">
+      <stop offset="0%" stop-color="#ffb25d"/>
+      <stop offset="100%" stop-color="#ff8f3d"/>
+    </linearGradient>
+    <linearGradient id="hoodie" x1="244" y1="720" x2="814" y2="1010" gradientUnits="userSpaceOnUse">
+      <stop offset="0%" stop-color="#18aee3"/>
+      <stop offset="100%" stop-color="#0877c3"/>
+    </linearGradient>
+    <linearGradient id="hair" x1="276" y1="196" x2="824" y2="552" gradientUnits="userSpaceOnUse">
+      <stop offset="0%" stop-color="#7a3b17"/>
+      <stop offset="100%" stop-color="#351707"/>
+    </linearGradient>
+    <filter id="softShadow" x="-20%" y="-20%" width="140%" height="140%">
+      <feDropShadow dx="0" dy="16" stdDeviation="18" flood-color="#4a230d" flood-opacity="0.16"/>
+    </filter>
+  </defs>
+
+  <rect width="1024" height="1024" fill="#fff"/>
+  <circle cx="512" cy="512" r="472" fill="url(#bg)"/>
+
+  <g filter="url(#softShadow)">
+    <path
+      d="M294 916c18-107 111-181 218-181h0c107 0 200 74 218 181l16 96H278l16-96Z"
+      fill="url(#hoodie)"
+    />
+    <path
+      d="M365 824c26-45 78-76 147-76 70 0 122 31 148 76-49 22-94 39-148 39s-98-17-147-39Z"
+      fill="#096db8"
+      opacity=".74"
+    />
+    <path d="M456 806h112v94c0 28-22 50-50 50h-12c-28 0-50-22-50-50v-94Z" fill="#eb7835"/>
+    <path d="M436 775c20 30 47 46 76 46s56-16 76-46v96c-26 16-50 24-76 24s-50-8-76-24v-96Z" fill="#f28a3d"/>
+
+    <path d="M335 470c-39 8-63 44-57 86 6 42 38 72 77 67l9-1-19-154-10 2Z" fill="#ff9c4b"/>
+    <path d="M689 470c39 8 63 44 57 86-6 42-38 72-77 67l-9-1 19-154 10 2Z" fill="#ff9c4b"/>
+    <path d="M337 507c-23 6-35 26-31 48 3 19 18 34 35 37" fill="none" stroke="#de7434" stroke-width="14" stroke-linecap="round"/>
+    <path d="M687 507c23 6 35 26 31 48-3 19-18 34-35 37" fill="none" stroke="#de7434" stroke-width="14" stroke-linecap="round"/>
+
+    <path
+      d="M512 219c-115 0-196 56-224 149-19 63-13 173 6 244 29 109 118 178 218 178s189-69 218-178c19-71 25-181 6-244-28-93-109-149-224-149Z"
+      fill="url(#skin)"
+    />
+    <path d="M451 614c18 14 38 21 61 21s43-7 61-21c-4 42-30 73-61 73s-57-31-61-73Z" fill="#7d2b19"/>
+    <path d="M476 626h72c-6 17-20 27-36 27s-30-10-36-27Z" fill="#fff"/>
+    <path d="M487 672c16 10 34 10 50 0-5 14-14 24-25 24s-20-10-25-24Z" fill="#e95e36"/>
+    <ellipse cx="512" cy="582" rx="28" ry="19" fill="#ef8640" opacity=".72"/>
+    <path d="M493 591c11 7 27 7 38 0" fill="none" stroke="#cf6932" stroke-width="9" stroke-linecap="round" opacity=".45"/>
+
+    <path d="M378 457c28-24 70-24 95 3" fill="none" stroke="#3a1a0b" stroke-width="28" stroke-linecap="round"/>
+    <path d="M551 460c25-27 67-27 95-3" fill="none" stroke="#3a1a0b" stroke-width="28" stroke-linecap="round"/>
+
+    <circle cx="421" cy="531" r="54" fill="#fff"/>
+    <circle cx="603" cy="531" r="54" fill="#fff"/>
+    <circle cx="425" cy="535" r="36" fill="#5b2c13"/>
+    <circle cx="599" cy="535" r="36" fill="#5b2c13"/>
+    <circle cx="425" cy="535" r="20" fill="#0f0c0a"/>
+    <circle cx="599" cy="535" r="20" fill="#0f0c0a"/>
+    <circle cx="405" cy="511" r="12" fill="#fff"/>
+    <circle cx="579" cy="511" r="12" fill="#fff"/>
+
+    <path
+      d="M247 447c-17-112 28-204 120-247 70-33 160-32 223 4 61 34 100 94 111 168 15 97-20 180-54 223 10-64-7-126-50-170-9 57-44 100-102 126 14-36 21-72 16-104-32 58-90 99-170 119 31-37 42-74 39-103-32 51-75 79-130 84 10-25 12-61-3-100Z"
+      fill="url(#hair)"
+    />
+    <path
+      d="M364 202c64-62 172-82 256-46 56 24 87 66 91 119 24-30 22-67-5-108 54 10 82 53 78 108 51-17 96-6 127 37-64-7-104 8-128 42 36 26 59 68 65 126-40-9-75-35-103-77-7 38-23 69-48 93-6-90-65-150-176-182-91-26-176-19-254 21 24-48 56-83 97-133Z"
+      fill="url(#hair)"
+    />
+    <path d="M334 392c55-19 100-57 137-113-6 60-43 107-111 141" fill="#86471f" opacity=".45"/>
+    <path d="M615 252c47 17 84 50 111 98-41-16-80-16-117 0 34-24 40-55 6-98Z" fill="#231006" opacity=".25"/>
+
+    <path d="M303 874c49 51 113 76 209 76s160-25 209-76l24 138H279l24-138Z" fill="#0c86cf" opacity=".86"/>
+    <path d="M406 794c-60 10-104 50-127 111" fill="none" stroke="#0d77bd" stroke-width="22" stroke-linecap="round" opacity=".65"/>
+    <path d="M618 794c60 10 104 50 127 111" fill="none" stroke="#0d77bd" stroke-width="22" stroke-linecap="round" opacity=".65"/>
+    <path d="M462 884v128" stroke="#fff7e7" stroke-width="12" stroke-linecap="round"/>
+    <path d="M562 884v128" stroke="#fff7e7" stroke-width="12" stroke-linecap="round"/>
+    <path d="M454 833c37 21 79 21 116 0" fill="none" stroke="#21b6e8" stroke-width="18" stroke-linecap="round"/>
+  </g>
+</svg>

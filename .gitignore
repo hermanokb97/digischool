@@ -1,0 +1,10 @@
+node_modules/
+build/
+dist/
+coverage/
+.playwright-mcp/
+.DS_Store
+*.log
+evaluation-*.png
+.env*
+!.env.example

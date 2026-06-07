@@ -3,6 +3,11 @@ import { useUser } from '@/context/UserContext';
 import { MODULES } from '@/lib/constants';
 import { formatDuration, getEvaluationLabel, getStudyResult } from '@/lib/evaluation';
 
+const KEYBOARD_TRACK_LABELS = {
+  ko: '한글',
+  en: '영어',
+} as const;
+
 function formatDate(iso?: string): string {
   if (!iso) return '아직 학습 전';
   try {
@@ -54,6 +59,12 @@ export function Growth() {
           const done = !!progress?.[m.key];
           const studiedAt = lastStudied?.[m.key];
           const result = getStudyResult(m.key);
+          const keyboardTrackEntries =
+            m.key === 'keyboard' && result?.details?.keyboardTracks
+              ? (['ko', 'en'] as const)
+                  .map((track) => ({ track, result: result.details?.keyboardTracks?.[track] }))
+                  .filter((entry): entry is { track: 'ko' | 'en'; result: NonNullable<typeof entry.result> } => !!entry.result)
+              : [];
           return (
             <article
               key={m.key}
@@ -94,6 +105,15 @@ export function Growth() {
                   <p className="font-body-lg text-body-lg text-on-surface-variant text-sm">
                     평가: <strong>{getEvaluationLabel(result.rating)}</strong>
                   </p>
+                  {keyboardTrackEntries.length > 0 && (
+                    <div className="mt-3 grid gap-2">
+                      {keyboardTrackEntries.map(({ track, result: trackResult }) => (
+                        <p key={track} className="rounded-lg bg-surface-container px-3 py-2 text-sm">
+                          <strong>{KEYBOARD_TRACK_LABELS[track]}</strong> 자리 {trackResult.positionAccuracy}%, 타자 {trackResult.typingAccuracy}%, {trackResult.cpm}타, 오타 {trackResult.mistakes}개
+                        </p>
+                      ))}
+                    </div>
+                  )}
                 </div>
               ) : (
                 <div className="bg-surface-container rounded-xl p-4 border border-surface-container-highest">

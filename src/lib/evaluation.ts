@@ -6,6 +6,23 @@ export interface StudyResult {
   durationMs: number;
   completedAt: string;
   rating: 'excellent' | 'good' | 'steady';
+  details?: StudyResultDetails;
+}
+
+export type KeyboardTrack = 'ko' | 'en';
+
+export interface KeyboardTrackResult {
+  label: string;
+  positionAccuracy: number;
+  typingAccuracy: number;
+  mistakes: number;
+  elapsedMs: number;
+  cpm: number;
+  completedAt: string;
+}
+
+export interface StudyResultDetails {
+  keyboardTracks?: Partial<Record<KeyboardTrack, KeyboardTrackResult>>;
 }
 
 const TARGET_SECONDS: Record<ModuleKey, { excellent: number; good: number }> = {
@@ -37,13 +54,27 @@ function getRating(module: ModuleKey, durationMs: number): StudyResult['rating']
   return 'steady';
 }
 
-export function saveStudyResult(module: ModuleKey, startedAt: number): StudyResult {
+function mergeDetails(existing: StudyResult['details'], next?: StudyResultDetails): StudyResult['details'] | undefined {
+  if (!next) return existing;
+  return {
+    ...existing,
+    ...next,
+    keyboardTracks: {
+      ...(existing?.keyboardTracks ?? {}),
+      ...(next.keyboardTracks ?? {}),
+    },
+  };
+}
+
+export function saveStudyResult(module: ModuleKey, startedAt: number, details?: StudyResultDetails): StudyResult {
   const durationMs = Math.max(1000, Date.now() - startedAt);
+  const existing = readResults()[module];
   const result: StudyResult = {
     module,
     durationMs,
     completedAt: new Date().toISOString(),
     rating: getRating(module, durationMs),
+    details: mergeDetails(existing?.details, details),
   };
 
   if (isGuestSession()) {

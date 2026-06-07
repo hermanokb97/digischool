@@ -5,6 +5,11 @@ import { useUser } from '@/context/UserContext';
 import { MODULES, getModule, isModuleKey } from '@/lib/constants';
 import { formatDuration, getEvaluationLabel, getStudyResult } from '@/lib/evaluation';
 
+const KEYBOARD_TRACK_LABELS = {
+  ko: '한글',
+  en: '영어',
+} as const;
+
 export function Result() {
   const { module } = useParams<{ module: string }>();
   const navigate = useNavigate();
@@ -16,6 +21,12 @@ export function Result() {
 
   const meta = getModule(module);
   const studyResult = getStudyResult(module);
+  const keyboardTrackEntries =
+    module === 'keyboard' && studyResult?.details?.keyboardTracks
+      ? (['ko', 'en'] as const)
+          .map((track) => ({ track, result: studyResult.details?.keyboardTracks?.[track] }))
+          .filter((entry): entry is { track: 'ko' | 'en'; result: NonNullable<typeof entry.result> } => !!entry.result)
+      : [];
   const progress = user?.progress;
   const completedCount = MODULES.filter((m) => progress?.[m.key]).length;
   const totalCount = MODULES.length;
@@ -93,6 +104,21 @@ export function Result() {
             </div>
           </div>
         )}
+        {keyboardTrackEntries.length > 0 && (
+          <div className="mt-5 grid w-full max-w-2xl grid-cols-1 gap-3 sm:grid-cols-2">
+            {keyboardTrackEntries.map(({ track, result }) => (
+              <div key={track} className="rounded-xl bg-surface-container-lowest border-2 border-primary-fixed p-4 text-left">
+                <p className="font-label-bold text-label-bold text-primary">{KEYBOARD_TRACK_LABELS[track]} 자판</p>
+                <p className="mt-2 text-sm text-on-surface-variant">
+                  자리 {result.positionAccuracy}% · 타자 {result.typingAccuracy}% · {result.cpm}타
+                </p>
+                <p className="mt-1 text-sm text-on-surface-variant">
+                  오타 {result.mistakes}개 · {formatDuration(result.elapsedMs)}
+                </p>
+              </div>
+            ))}
+          </div>
+        )}
       </motion.header>
 
       <div className="w-full grid grid-cols-1 md:grid-cols-12 gap-gutter mb-margin-tablet z-10">
@@ -121,6 +147,15 @@ export function Result() {
               <p className="font-body-lg text-body-lg text-on-surface-variant">
                 총 {formatDuration(studyResult.durationMs)} 동안 연습했어요. {getEvaluationLabel(studyResult.rating)}
               </p>
+              {keyboardTrackEntries.length > 0 && (
+                <div className="mt-4 grid gap-2">
+                  {keyboardTrackEntries.map(({ track, result }) => (
+                    <p key={track} className="rounded-lg bg-surface-container-lowest px-3 py-2 text-sm text-on-surface-variant">
+                      <strong>{KEYBOARD_TRACK_LABELS[track]}</strong> 자리 {result.positionAccuracy}%, 타자 {result.typingAccuracy}%, {result.cpm}타
+                    </p>
+                  ))}
+                </div>
+              )}
             </div>
           )}
           <div className="font-label-bold text-label-bold text-on-surface bg-surface-container px-6 py-3 rounded-full">{today}</div>

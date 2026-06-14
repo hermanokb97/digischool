@@ -60,7 +60,7 @@ export function Growth() {
           const studiedAt = lastStudied?.[m.key];
           const result = getStudyResult(m.key);
           const keyboardTrackEntries =
-            m.key === 'keyboard' && result?.details?.keyboardTracks
+            m.key === 'typing' && result?.details?.keyboardTracks
               ? (['ko', 'en'] as const)
                   .map((track) => ({ track, result: result.details?.keyboardTracks?.[track] }))
                   .filter((entry): entry is { track: 'ko' | 'en'; result: NonNullable<typeof entry.result> } => !!entry.result)

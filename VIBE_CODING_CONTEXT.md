@@ -6,7 +6,7 @@ Last updated: 2026-05-02
 
 ## 프로젝트 목적
 
-Digi School은 초등학생을 위한 디지털 리터러시 학습 웹앱이다. 키보드, 마우스, 인터넷 브라우저, 회원가입/로그인/로그아웃을 실제 컴퓨터 조작처럼 게임형 미션으로 연습하게 한다.
+Digi School은 초등학생을 위한 디지털 리터러시 학습 웹앱이다. 키보드, 타자, 마우스, 인터넷 브라우저, 회원가입/로그인/로그아웃을 실제 컴퓨터 조작처럼 게임형 미션으로 연습하게 한다.
 
 ## 기술 스택
 
@@ -44,7 +44,7 @@ npm run build
 1. 사용자가 `/register`에서 기존 친구를 선택하거나 새 친구를 추가한다.
 2. 선택된 친구는 `digischool_current_user`에 저장되고, 전체 사용자 목록은 `digischool_users`에 저장된다.
 3. 로그인된 사용자는 `/` 홈으로 이동하며, 아직 완료하지 않은 첫 번째 모듈을 다음 학습으로 안내받는다.
-4. `/dashboard`에서 네 가지 학습 모듈 상태를 확인하고 원하는 모듈로 들어간다.
+4. `/dashboard`에서 다섯 가지 학습 모듈 상태를 확인하고 원하는 모듈로 들어간다.
 5. 각 모듈을 끝내면 `saveStudyResult(module, startedAt)`로 완료 시간과 평가 등급을 저장한다.
 6. 각 모듈은 `markComplete(module)`을 호출해 사용자 진행도와 마지막 학습 시간을 갱신한다.
 7. 완료 후 `/result/:module`로 이동해 수료증, 걸린 시간, 평가 문구, 다음 학습 버튼을 보여준다.
@@ -57,6 +57,7 @@ npm run build
 | key | route | result route | 내용 |
 | --- | --- | --- | --- |
 | `keyboard` | `/keyboard` | `/result/keyboard` | Enter, Space, Backspace, A, 숫자, Shift/CapsLock/Ctrl/Alt/Tab, 방향키, 특수문자, Ctrl+C/V 연습 |
+| `typing` | `/keyboard-typing` | `/result/typing` | 한글/영어 자판 위치 퀴즈, 낱말, 짧은 글, 긴 글 타자 연습 |
 | `mouse` | `/mouse` | `/result/mouse` | 클릭, 더블클릭, 드래그, 바탕화면 폴더 열기, 파일 이동, 여러 개 선택 |
 | `browser` | `/browser` | `/result/browser` | 브라우저 버튼 설명, 주소 입력, 사이트 검색, 뒤로/앞으로/새로고침, 새 탭/탭 닫기 |
 | `login` | `/login-practice` | `/result/login` | 학교 계정 형태의 회원가입, 안전한 비밀번호, 로그인, 로그아웃 |
@@ -72,6 +73,7 @@ interface User {
   avatar: AvatarId;
   progress: {
     keyboard: boolean;
+    typing: boolean;
     mouse: boolean;
     browser: boolean;
     login: boolean;

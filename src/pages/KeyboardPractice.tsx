@@ -1,665 +1,506 @@
-import { KeyboardEvent as ReactKeyboardEvent, useEffect, useMemo, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { SpeakButton } from '@/components/SpeakButton';
 import { useUser } from '@/context/UserContext';
-import {
-  formatDuration,
-  getStudyResult,
-  KeyboardTrack,
-  KeyboardTrackResult,
-  saveStudyResult,
-} from '@/lib/evaluation';
 import { playClick, playFail, playFanfare, playSuccess } from '@/lib/sound';
-import { cn } from '@/lib/utils';
+import { SpeakButton } from '@/components/SpeakButton';
+import { saveStudyResult } from '@/lib/evaluation';
 
-type TrackId = KeyboardTrack;
-type StageId = 'position' | 'words' | 'short' | 'long' | 'complete';
-type KeyWidth = 'normal' | 'wide' | 'extraWide' | 'space';
-
-interface LetterKey {
-  code: string;
-  en: string;
-  ko: string;
-  finger: string;
-  row: 'top' | 'home' | 'bottom';
-  anchor?: boolean;
-}
-
-interface DisplayKey {
-  code: string;
-  label: string;
-  width?: KeyWidth;
-  letter?: LetterKey;
-}
-
-interface PositionRound {
+interface Step {
   id: string;
-  title: string;
+  type?: 'key' | 'copy' | 'paste';
+  prompt: string;
   hint: string;
-  keyCodes: string[];
-  count: number;
+  matchKey?: string;
+  matchCode?: string;
+  shiftKey?: boolean;
+  ctrlKey?: boolean;
+  altKey?: boolean;
+  display: string;
+  describe: string;
 }
 
-interface PositionQuestion {
-  id: string;
-  roundTitle: string;
-  roundHint: string;
-  key: LetterKey;
-  answer: string;
-  options: string[];
-}
-
-interface TypingStats {
-  correctChars: number;
-  comparedChars: number;
-  mistakes: number;
-}
-
-interface ScoreResult {
-  correctChars: number;
-  comparedChars: number;
-  mistakes: number;
-  accuracy: number;
-}
-
-const LETTER_KEYS: LetterKey[] = [
-  { code: 'KeyQ', en: 'Q', ko: 'ㅂ', finger: '왼손 새끼', row: 'top' },
-  { code: 'KeyW', en: 'W', ko: 'ㅈ', finger: '왼손 약지', row: 'top' },
-  { code: 'KeyE', en: 'E', ko: 'ㄷ', finger: '왼손 중지', row: 'top' },
-  { code: 'KeyR', en: 'R', ko: 'ㄱ', finger: '왼손 검지', row: 'top' },
-  { code: 'KeyT', en: 'T', ko: 'ㅅ', finger: '왼손 검지', row: 'top' },
-  { code: 'KeyY', en: 'Y', ko: 'ㅛ', finger: '오른손 검지', row: 'top' },
-  { code: 'KeyU', en: 'U', ko: 'ㅕ', finger: '오른손 검지', row: 'top' },
-  { code: 'KeyI', en: 'I', ko: 'ㅑ', finger: '오른손 중지', row: 'top' },
-  { code: 'KeyO', en: 'O', ko: 'ㅐ', finger: '오른손 약지', row: 'top' },
-  { code: 'KeyP', en: 'P', ko: 'ㅔ', finger: '오른손 새끼', row: 'top' },
-  { code: 'KeyA', en: 'A', ko: 'ㅁ', finger: '왼손 새끼', row: 'home' },
-  { code: 'KeyS', en: 'S', ko: 'ㄴ', finger: '왼손 약지', row: 'home' },
-  { code: 'KeyD', en: 'D', ko: 'ㅇ', finger: '왼손 중지', row: 'home' },
-  { code: 'KeyF', en: 'F', ko: 'ㄹ', finger: '왼손 검지', row: 'home', anchor: true },
-  { code: 'KeyG', en: 'G', ko: 'ㅎ', finger: '왼손 검지', row: 'home' },
-  { code: 'KeyH', en: 'H', ko: 'ㅗ', finger: '오른손 검지', row: 'home' },
-  { code: 'KeyJ', en: 'J', ko: 'ㅓ', finger: '오른손 검지', row: 'home', anchor: true },
-  { code: 'KeyK', en: 'K', ko: 'ㅏ', finger: '오른손 중지', row: 'home' },
-  { code: 'KeyL', en: 'L', ko: 'ㅣ', finger: '오른손 약지', row: 'home' },
-  { code: 'KeyZ', en: 'Z', ko: 'ㅋ', finger: '왼손 새끼', row: 'bottom' },
-  { code: 'KeyX', en: 'X', ko: 'ㅌ', finger: '왼손 약지', row: 'bottom' },
-  { code: 'KeyC', en: 'C', ko: 'ㅊ', finger: '왼손 중지', row: 'bottom' },
-  { code: 'KeyV', en: 'V', ko: 'ㅍ', finger: '왼손 검지', row: 'bottom' },
-  { code: 'KeyB', en: 'B', ko: 'ㅠ', finger: '왼손 검지', row: 'bottom' },
-  { code: 'KeyN', en: 'N', ko: 'ㅜ', finger: '오른손 검지', row: 'bottom' },
-  { code: 'KeyM', en: 'M', ko: 'ㅡ', finger: '오른손 검지', row: 'bottom' },
-];
-
-const KEY_BY_CODE = Object.fromEntries(LETTER_KEYS.map((key) => [key.code, key])) as Record<string, LetterKey>;
-
-const KEYBOARD_ROWS: DisplayKey[][] = [
-  [
-    { code: 'Backquote', label: '`' },
-    { code: 'Digit1', label: '1' },
-    { code: 'Digit2', label: '2' },
-    { code: 'Digit3', label: '3' },
-    { code: 'Digit4', label: '4' },
-    { code: 'Digit5', label: '5' },
-    { code: 'Digit6', label: '6' },
-    { code: 'Digit7', label: '7' },
-    { code: 'Digit8', label: '8' },
-    { code: 'Digit9', label: '9' },
-    { code: 'Digit0', label: '0' },
-    { code: 'Backspace', label: 'Backspace', width: 'extraWide' },
-  ],
-  [
-    { code: 'Tab', label: 'Tab', width: 'wide' },
-    ...LETTER_KEYS.filter((key) => key.row === 'top').map((letter) => ({ code: letter.code, label: letter.en, letter })),
-  ],
-  [
-    { code: 'CapsLock', label: 'Caps', width: 'extraWide' },
-    ...LETTER_KEYS.filter((key) => key.row === 'home').map((letter) => ({ code: letter.code, label: letter.en, letter })),
-    { code: 'Enter', label: 'Enter', width: 'extraWide' },
-  ],
-  [
-    { code: 'ShiftLeft', label: 'Shift', width: 'extraWide' },
-    ...LETTER_KEYS.filter((key) => key.row === 'bottom').map((letter) => ({ code: letter.code, label: letter.en, letter })),
-    { code: 'Slash', label: '/' },
-    { code: 'ShiftRight', label: 'Shift', width: 'extraWide' },
-  ],
-  [
-    { code: 'ControlLeft', label: 'Ctrl', width: 'wide' },
-    { code: 'AltLeft', label: 'Alt', width: 'wide' },
-    { code: 'Space', label: 'Space', width: 'space' },
-    { code: 'AltRight', label: 'Alt', width: 'wide' },
-    { code: 'ControlRight', label: 'Ctrl', width: 'wide' },
-  ],
-];
-
-const POSITION_ROUNDS: Record<TrackId, PositionRound[]> = {
-  ko: [
-    { id: 'anchor', title: '1. 기준 자리 익히기', hint: '돌기가 있는 F와 J 자리를 먼저 기억해요.', keyCodes: ['KeyF', 'KeyJ'], count: 4 },
-    { id: 'left_home', title: '2. 왼손 홈줄', hint: '왼손이 쉬는 줄의 자음을 맞혀요.', keyCodes: ['KeyA', 'KeyS', 'KeyD', 'KeyF', 'KeyG'], count: 5 },
-    { id: 'right_home', title: '3. 오른손 홈줄', hint: '오른손 홈줄에는 자주 쓰는 모음이 있어요.', keyCodes: ['KeyH', 'KeyJ', 'KeyK', 'KeyL'], count: 5 },
-    { id: 'top', title: '4. 윗줄', hint: '자음과 모음이 함께 있는 윗줄을 익혀요.', keyCodes: ['KeyQ', 'KeyW', 'KeyE', 'KeyR', 'KeyT', 'KeyY', 'KeyU', 'KeyI', 'KeyO', 'KeyP'], count: 8 },
-    { id: 'bottom', title: '5. 아랫줄', hint: '아랫줄의 자음과 모음을 기억해요.', keyCodes: ['KeyZ', 'KeyX', 'KeyC', 'KeyV', 'KeyB', 'KeyN', 'KeyM'], count: 7 },
-    { id: 'vowels', title: '6. 모음 자리', hint: '한글 모음 자리를 한 번 더 확인해요.', keyCodes: ['KeyY', 'KeyU', 'KeyI', 'KeyO', 'KeyP', 'KeyH', 'KeyJ', 'KeyK', 'KeyL', 'KeyB', 'KeyN', 'KeyM'], count: 8 },
-    { id: 'confusing', title: '7. 헷갈리는 자리', hint: '비슷하게 보이는 자리를 반복해요.', keyCodes: ['KeyJ', 'KeyK', 'KeyH', 'KeyN', 'KeyB', 'KeyM', 'KeyO', 'KeyP'], count: 8 },
-    { id: 'all', title: '8. 전체 자리 퀴즈', hint: '빈 키에 들어갈 자모를 맞혀요.', keyCodes: LETTER_KEYS.map((key) => key.code), count: 12 },
-  ],
-  en: [
-    { id: 'anchor', title: '1. 기준 자리 익히기', hint: '돌기가 있는 F와 J 자리를 먼저 기억해요.', keyCodes: ['KeyF', 'KeyJ'], count: 4 },
-    { id: 'left_home', title: '2. 왼손 홈줄', hint: '왼손 홈줄 A S D F G를 익혀요.', keyCodes: ['KeyA', 'KeyS', 'KeyD', 'KeyF', 'KeyG'], count: 5 },
-    { id: 'right_home', title: '3. 오른손 홈줄', hint: '오른손 홈줄 H J K L을 익혀요.', keyCodes: ['KeyH', 'KeyJ', 'KeyK', 'KeyL'], count: 5 },
-    { id: 'top', title: '4. 윗줄', hint: 'Q W E R T Y U I O P 위치를 맞혀요.', keyCodes: ['KeyQ', 'KeyW', 'KeyE', 'KeyR', 'KeyT', 'KeyY', 'KeyU', 'KeyI', 'KeyO', 'KeyP'], count: 8 },
-    { id: 'bottom', title: '5. 아랫줄', hint: 'Z X C V B N M 위치를 맞혀요.', keyCodes: ['KeyZ', 'KeyX', 'KeyC', 'KeyV', 'KeyB', 'KeyN', 'KeyM'], count: 7 },
-    { id: 'vowels', title: '6. 모음과 자주 쓰는 글쇠', hint: '영어 모음과 자주 쓰는 글쇠를 복습해요.', keyCodes: ['KeyA', 'KeyE', 'KeyI', 'KeyO', 'KeyU', 'KeyT', 'KeyN', 'KeyS', 'KeyR'], count: 8 },
-    { id: 'confusing', title: '7. 헷갈리는 자리', hint: '서로 가까운 글쇠를 반복해서 구분해요.', keyCodes: ['KeyQ', 'KeyW', 'KeyE', 'KeyI', 'KeyO', 'KeyP', 'KeyB', 'KeyN', 'KeyM'], count: 8 },
-    { id: 'all', title: '8. 전체 자리 퀴즈', hint: '빈 키에 들어갈 알파벳을 맞혀요.', keyCodes: LETTER_KEYS.map((key) => key.code), count: 12 },
-  ],
-};
-
-const TRACKS: Record<TrackId, { title: string; shortTitle: string; description: string; words: string[]; shortTexts: string[]; longTexts: string[] }> = {
-  ko: {
-    title: '한글 자판',
-    shortTitle: '한글',
-    description: '표준 두벌식 자음과 모음 위치를 외우고 한글 문장으로 연습해요.',
-    words: ['나라', '학교', '사과', '바다', '구름', '친구', '가나다', '디지스쿨'],
-    shortTexts: ['나는 키보드 자리를 외워요.', '오늘도 차분하게 연습해요.', '손가락이 자리를 기억해요.'],
-    longTexts: [
-      '디지 스쿨에서 키보드 자리를 배워요. 자음과 모음을 기억하면 글을 더 빠르게 쓸 수 있어요. 천천히 정확하게 입력해요.',
-    ],
+const STEPS: Step[] = [
+  {
+    id: 'enter',
+    prompt: 'Enter 키를 눌러보세요!',
+    hint: 'Enter는 결정하거나 줄바꿈을 할 때 써요. 보통 키보드 오른쪽에 있어요.',
+    matchKey: 'Enter',
+    display: 'Enter',
+    describe: '엔터',
   },
-  en: {
-    title: '영어 자판',
-    shortTitle: '영어',
-    description: 'QWERTY 알파벳 위치를 외우고 영어 단어와 문장으로 연습해요.',
-    words: ['desk', 'school', 'friend', 'keyboard', 'garden', 'window', 'planet', 'digital'],
-    shortTexts: ['I know the keyboard now.', 'Typing gets better with practice.', 'Find each key and type slowly.'],
-    longTexts: [
-      'I practice typing every day. I remember each key position and type with care. Slow and steady typing builds strong skills.',
-    ],
+  {
+    id: 'space',
+    prompt: '스페이스(Space) 키를 눌러보세요!',
+    hint: 'Space는 띄어쓰기에 사용해요. 키보드에서 가장 길고 큰 키예요.',
+    matchKey: ' ',
+    display: 'Space',
+    describe: '스페이스',
   },
-};
-
-const STAGES: Array<{ id: StageId; title: string; icon: string }> = [
-  { id: 'position', title: '자리 연습', icon: 'grid_view' },
-  { id: 'words', title: '낱말 연습', icon: 'abc' },
-  { id: 'short', title: '짧은 글 연습', icon: 'short_text' },
-  { id: 'long', title: '긴 글 연습', icon: 'notes' },
+  {
+    id: 'backspace',
+    prompt: '백스페이스(Backspace) 키를 눌러보세요!',
+    hint: 'Backspace는 글자를 지울 때 써요. 보통 키보드 오른쪽 위에 있어요.',
+    matchKey: 'Backspace',
+    display: 'Backspace',
+    describe: '백스페이스',
+  },
+  {
+    id: 'a',
+    prompt: 'A 키를 눌러보세요!',
+    hint: '글자 A 키예요. 영어 소문자가 입력돼요.',
+    matchKey: 'a',
+    matchCode: 'KeyA',
+    display: 'A',
+    describe: '에이',
+  },
+  {
+    id: 'one',
+    prompt: '숫자 1 키를 눌러보세요!',
+    hint: '키보드 위쪽 숫자줄에 있어요.',
+    matchKey: '1',
+    matchCode: 'Digit1',
+    display: '1',
+    describe: '숫자 일',
+  },
+  {
+    id: 'shift',
+    prompt: 'Shift 키를 눌러보세요!',
+    hint: 'Shift는 다른 키와 함께 누르면 대문자나 특수 기호를 입력할 수 있어요.',
+    matchKey: 'Shift',
+    display: 'Shift',
+    describe: '쉬프트',
+  },
+  {
+    id: 'capslock',
+    prompt: 'CapsLock 키를 눌러보세요!',
+    hint: 'CapsLock은 영어 대문자를 계속 입력하고 싶을 때 켜고 끄는 키예요. 한 번 누르면 켜지고, 다시 누르면 꺼져요.',
+    matchKey: 'CapsLock',
+    display: 'CapsLock',
+    describe: '캡스락',
+  },
+  {
+    id: 'ctrl',
+    prompt: 'Ctrl(컨트롤) 키를 눌러보세요!',
+    hint: 'Ctrl은 단축키를 사용할 때 함께 눌러요. 예: Ctrl+C 복사, Ctrl+V 붙여넣기.',
+    matchKey: 'Control',
+    display: 'Ctrl',
+    describe: '컨트롤',
+  },
+  {
+    id: 'alt',
+    prompt: 'Alt(알트) 키를 눌러보세요!',
+    hint: 'Alt는 메뉴를 열거나 다른 기능을 추가로 사용할 때 써요.',
+    matchKey: 'Alt',
+    display: 'Alt',
+    describe: '알트',
+  },
+  {
+    id: 'tab',
+    prompt: 'Tab(탭) 키를 눌러보세요!',
+    hint: 'Tab은 다음 칸이나 다음 항목으로 이동할 때 써요.',
+    matchKey: 'Tab',
+    display: 'Tab',
+    describe: '탭',
+  },
+  {
+    id: 'arrow',
+    prompt: '오른쪽 방향키 →를 눌러보세요!',
+    hint: '방향키로 글자나 화면을 움직일 수 있어요.',
+    matchKey: 'ArrowRight',
+    display: '→',
+    describe: '오른쪽 방향키',
+  },
+  {
+    id: 'shift_exclaim',
+    prompt: 'Shift를 누른 채 1을 눌러서 느낌표(!)를 만들어보세요!',
+    hint: 'Shift + 1 = ! 처럼 Shift와 함께 누르면 특수 기호가 만들어져요.',
+    matchKey: '!',
+    shiftKey: true,
+    display: 'Shift + 1',
+    describe: '느낌표',
+  },
+  {
+    id: 'shift_question',
+    prompt: 'Shift를 누른 채 / 키를 눌러서 물음표(?)를 만들어보세요!',
+    hint: 'Shift + / = ? 처럼 특수 기호도 키 조합으로 만들어요.',
+    matchKey: '?',
+    shiftKey: true,
+    display: 'Shift + /',
+    describe: '물음표',
+  },
+  {
+    id: 'copy_shortcut',
+    type: 'copy',
+    prompt: 'Ctrl + C로 문장을 복사해보세요!',
+    hint: '먼저 복사할 문장을 마우스로 드래그해서 파랗게 선택해요. 그 다음 Ctrl 키를 누른 채 C를 누르면 문장이 복사돼요.',
+    matchKey: 'c',
+    ctrlKey: true,
+    display: 'Ctrl + C',
+    describe: '복사 단축키',
+  },
+  {
+    id: 'paste_shortcut',
+    type: 'paste',
+    prompt: 'Ctrl + V로 문장을 붙여넣어보세요!',
+    hint: '빈 칸을 클릭하고 Ctrl 키를 누른 채 V를 누르면 복사한 문장이 옮겨져요.',
+    matchKey: 'v',
+    ctrlKey: true,
+    display: 'Ctrl + V',
+    describe: '붙여넣기 단축키',
+  },
 ];
 
-function getKeyLabel(track: TrackId, key: LetterKey): string {
-  return track === 'ko' ? key.ko : key.en;
-}
+const TopRow = ['Q', 'W', 'E', 'R', 'T', 'Y', 'U', 'I', 'O', 'P'];
+const HomeRow = ['A', 'S', 'D', 'F', 'G', 'H', 'J', 'K', 'L'];
+const BottomRow = ['Z', 'X', 'C', 'V', 'B', 'N', 'M'];
+const SHORTCUT_TEXT = '디지 스쿨에서 단축키를 배워요!';
 
-function rotate<T>(items: T[], amount: number): T[] {
-  if (items.length === 0) return [];
-  const offset = amount % items.length;
-  return [...items.slice(offset), ...items.slice(0, offset)];
-}
-
-function buildPositionQuestions(track: TrackId): PositionQuestion[] {
-  const allLabels = LETTER_KEYS.map((key) => getKeyLabel(track, key));
-  return POSITION_ROUNDS[track].flatMap((round, roundIndex) => {
-    const keys = round.keyCodes.map((code) => KEY_BY_CODE[code]).filter(Boolean);
-    return Array.from({ length: round.count }, (_, questionIndex) => {
-      const key = keys[(questionIndex + roundIndex) % keys.length];
-      const answer = getKeyLabel(track, key);
-      const distractors = allLabels.filter((label) => label !== answer);
-      const rotated = rotate(distractors, questionIndex * 3 + roundIndex * 5);
-      const options = rotate([answer, ...rotated.slice(0, 3)], questionIndex + roundIndex);
-      return {
-        id: `${round.id}-${questionIndex}`,
-        roundTitle: round.title,
-        roundHint: round.hint,
-        key,
-        answer,
-        options,
-      };
-    });
-  });
-}
-
-function getPositionRoundProgress(track: TrackId, index: number): { current: number; total: number } {
-  let seen = 0;
-  for (const round of POSITION_ROUNDS[track]) {
-    if (index < seen + round.count) {
-      return { current: index - seen + 1, total: round.count };
-    }
-    seen += round.count;
+function matches(step: Step, e: KeyboardEvent): boolean {
+  if (step.shiftKey && !e.shiftKey) return false;
+  if (step.ctrlKey && !e.ctrlKey) return false;
+  if (step.altKey && !e.altKey) return false;
+  if (step.matchCode && e.code === step.matchCode) return true;
+  if (step.matchKey === ' ' && (e.key === ' ' || e.code === 'Space')) return true;
+  if (step.matchKey === 'Control' && (e.key === 'Control' || e.code.startsWith('Control'))) return true;
+  if (step.matchKey === 'Alt' && (e.key === 'Alt' || e.code.startsWith('Alt'))) return true;
+  if (step.matchKey === 'Shift' && (e.key === 'Shift' || e.code.startsWith('Shift'))) return true;
+  if (step.matchKey === 'CapsLock' && e.key === 'CapsLock') return true;
+  if (step.matchKey === 'Tab' && e.key === 'Tab') return true;
+  if (step.matchKey === 'ArrowRight' && e.key === 'ArrowRight') return true;
+  if (step.matchKey && step.matchKey.length === 1) {
+    return e.key.toLowerCase() === step.matchKey.toLowerCase();
   }
-  const last = POSITION_ROUNDS[track][POSITION_ROUNDS[track].length - 1];
-  return { current: last.count, total: last.count };
+  return e.key === step.matchKey;
 }
 
-function scoreText(input: string, target: string): ScoreResult {
-  const inputChars = Array.from(input.trim());
-  const targetChars = Array.from(target.trim());
-  const comparedChars = Math.max(inputChars.length, targetChars.length, 1);
-  let correctChars = 0;
-  for (let index = 0; index < targetChars.length; index += 1) {
-    if (inputChars[index] === targetChars[index]) correctChars += 1;
-  }
-  const mistakes = comparedChars - correctChars;
-  return {
-    correctChars,
-    comparedChars,
-    mistakes,
-    accuracy: Math.round((correctChars / comparedChars) * 100),
-  };
-}
-
-function isExactMatch(input: string, target: string): boolean {
-  return input.trim() === target.trim();
-}
-
-function percentage(value: number, total: number): number {
-  if (total <= 0) return 0;
-  return Math.round((value / total) * 100);
-}
-
-function getTypingItems(track: TrackId, stage: StageId): string[] {
-  if (stage === 'words') return TRACKS[track].words;
-  if (stage === 'short') return TRACKS[track].shortTexts;
-  if (stage === 'long') return TRACKS[track].longTexts;
-  return [];
-}
-
-function getNextIncompleteTrack(results: Partial<Record<TrackId, KeyboardTrackResult>>, current: TrackId): TrackId {
-  if (!results.ko && current !== 'ko') return 'ko';
-  if (!results.en && current !== 'en') return 'en';
-  return current === 'ko' ? 'en' : 'ko';
+function isExpectedModifierPrelude(step: Step, e: KeyboardEvent): boolean {
+  if (step.ctrlKey && step.matchKey !== 'Control' && (e.key === 'Control' || e.code.startsWith('Control'))) return true;
+  if (step.shiftKey && step.matchKey !== 'Shift' && (e.key === 'Shift' || e.code.startsWith('Shift'))) return true;
+  if (step.altKey && step.matchKey !== 'Alt' && (e.key === 'Alt' || e.code.startsWith('Alt'))) return true;
+  return false;
 }
 
 export function KeyboardPractice() {
   const navigate = useNavigate();
   const { markComplete } = useUser();
-  const savedKeyboardTracks = getStudyResult('keyboard')?.details?.keyboardTracks ?? {};
-  const [track, setTrack] = useState<TrackId>('ko');
-  const [stage, setStage] = useState<StageId>('position');
-  const [positionQuestions, setPositionQuestions] = useState<PositionQuestion[]>(() => buildPositionQuestions('ko'));
-  const [positionIndex, setPositionIndex] = useState(0);
-  const [positionCorrect, setPositionCorrect] = useState(0);
-  const [positionTotal, setPositionTotal] = useState(0);
-  const [typingStats, setTypingStats] = useState<TypingStats>({ correctChars: 0, comparedChars: 0, mistakes: 0 });
-  const [entryIndex, setEntryIndex] = useState(0);
-  const [entryValue, setEntryValue] = useState('');
-  const [message, setMessage] = useState('빈칸이 된 키 위치에 들어갈 글자를 골라보세요.');
-  const [pressedCode, setPressedCode] = useState<string | null>(null);
-  const [wrongCode, setWrongCode] = useState<string | null>(null);
+  const [stepIndex, setStepIndex] = useState(0);
+  const [pressedKey, setPressedKey] = useState<string | null>(null);
   const [shake, setShake] = useState(false);
-  const [trackResults, setTrackResults] = useState<Partial<Record<TrackId, KeyboardTrackResult>>>(savedKeyboardTracks);
-  const trackStartedAtRef = useRef(Date.now());
-  const moduleStartedAtRef = useRef(Date.now());
-  const completingRef = useRef(false);
+  const [done, setDone] = useState(false);
+  const [copiedText, setCopiedText] = useState('');
+  const [pastedText, setPastedText] = useState('');
+  const [selectedText, setSelectedText] = useState('');
+  const completedRef = useRef(false);
+  const startedAtRef = useRef(Date.now());
 
-  const currentQuestion = positionQuestions[positionIndex];
-  const currentTypingItems = useMemo(() => getTypingItems(track, stage), [track, stage]);
-  const currentTarget = currentTypingItems[entryIndex] ?? '';
-  const positionAccuracy = percentage(positionCorrect, positionTotal);
-  const typingAccuracy = percentage(typingStats.correctChars, typingStats.comparedChars);
-  const typingCpm = Math.round((typingStats.correctChars / Math.max(Date.now() - trackStartedAtRef.current, 1000)) * 60000);
-  const positionRoundProgress = getPositionRoundProgress(track, positionIndex);
-  const activeStageIndex = Math.max(0, STAGES.findIndex((item) => item.id === stage));
-  const overallProgress = stage === 'complete'
-    ? 100
-    : Math.min(99, Math.round(((activeStageIndex + (stage === 'position' ? positionIndex / positionQuestions.length : (entryIndex + 1) / Math.max(currentTypingItems.length, 1))) / STAGES.length) * 100));
-  const otherTrack = track === 'ko' ? 'en' : 'ko';
-  const bothTracksDone = !!trackResults.ko && !!trackResults.en;
+  const currentStep = STEPS[stepIndex];
+  const progress = useMemo(() => Math.round((stepIndex / STEPS.length) * 100), [stepIndex]);
 
-  const resetTrackPractice = (nextTrack: TrackId, nextStage: StageId = 'position') => {
-    setTrack(nextTrack);
-    setStage(nextStage);
-    setPositionQuestions(buildPositionQuestions(nextTrack));
-    setPositionIndex(0);
-    setPositionCorrect(0);
-    setPositionTotal(0);
-    setTypingStats({ correctChars: 0, comparedChars: 0, mistakes: 0 });
-    setEntryIndex(0);
-    setEntryValue('');
-    setMessage('빈칸이 된 키 위치에 들어갈 글자를 골라보세요.');
-    setPressedCode(null);
-    setWrongCode(null);
-    setShake(false);
-    trackStartedAtRef.current = Date.now();
-  };
-
-  const showWrongFeedback = (code?: string) => {
-    playFail();
-    setWrongCode(code ?? currentQuestion?.key.code ?? null);
-    setShake(true);
-    window.setTimeout(() => setWrongCode(null), 450);
-    window.setTimeout(() => setShake(false), 450);
-  };
-
-  const finishTrack = (finalTypingStats: TypingStats = typingStats) => {
-    const elapsedMs = Math.max(1000, Date.now() - trackStartedAtRef.current);
-    const result: KeyboardTrackResult = {
-      label: TRACKS[track].title,
-      positionAccuracy: percentage(positionCorrect, positionTotal),
-      typingAccuracy: percentage(finalTypingStats.correctChars, finalTypingStats.comparedChars),
-      mistakes: finalTypingStats.mistakes,
-      elapsedMs,
-      cpm: Math.round((finalTypingStats.correctChars / elapsedMs) * 60000),
-      completedAt: new Date().toISOString(),
-    };
-
-    setTrackResults((previous) => {
-      const next = { ...previous, [track]: result };
-      saveStudyResult('keyboard', moduleStartedAtRef.current, { keyboardTracks: next });
-      if (next.ko && next.en && !completingRef.current) {
-        completingRef.current = true;
+  const finishCurrentStep = () => {
+    const nextIndex = stepIndex + 1;
+    if (nextIndex >= STEPS.length) {
+      setDone(true);
+      if (!completedRef.current) {
+        completedRef.current = true;
+        saveStudyResult('keyboard', startedAtRef.current);
         playFanfare();
         markComplete('keyboard');
-        window.setTimeout(() => navigate('/result/keyboard'), 900);
-      } else {
-        playFanfare();
+        window.setTimeout(() => navigate('/result/keyboard'), 1100);
       }
-      return next;
-    });
-    setStage('complete');
-    setMessage(`${TRACKS[track].title}을 마쳤어요. ${TRACKS[otherTrack].title}도 이어서 해볼까요?`);
-  };
-
-  const advanceTypingStage = (finalTypingStats: TypingStats = typingStats) => {
-    if (stage === 'words') {
-      setStage('short');
-      setEntryIndex(0);
-      setEntryValue('');
-      setMessage('이제 짧은 문장을 입력해요.');
-      return;
-    }
-    if (stage === 'short') {
-      setStage('long');
-      setEntryIndex(0);
-      setEntryValue('');
-      setMessage('마지막으로 긴 글을 차분하게 입력해요.');
-      return;
-    }
-    finishTrack(finalTypingStats);
-  };
-
-  const handlePositionAnswer = (answer: string, code?: string) => {
-    if (stage !== 'position' || !currentQuestion) return;
-    const correct = answer === currentQuestion.answer || code === currentQuestion.key.code;
-    setPositionTotal((value) => value + 1);
-    setPressedCode(code ?? currentQuestion.key.code);
-    window.setTimeout(() => setPressedCode((value) => (value === (code ?? currentQuestion.key.code) ? null : value)), 250);
-
-    if (!correct) {
-      setMessage(`아직 아니에요. ${currentQuestion.roundTitle}의 위치를 다시 살펴보세요.`);
-      showWrongFeedback(code);
-      return;
-    }
-
-    playSuccess();
-    setPositionCorrect((value) => value + 1);
-    if (positionIndex + 1 >= positionQuestions.length) {
-      setStage('words');
-      setEntryIndex(0);
-      setEntryValue('');
-      setMessage('자리 연습 완료! 이제 낱말을 입력해요.');
     } else {
-      setPositionIndex((value) => value + 1);
-      setMessage('정답이에요. 다음 빈칸도 맞혀보세요.');
+      setStepIndex(nextIndex);
     }
-  };
-
-  const handleTypingSubmit = () => {
-    if (!currentTarget) return;
-    const score = scoreText(entryValue, currentTarget);
-    const exact = isExactMatch(entryValue, currentTarget);
-    const nextTypingStats = {
-      correctChars: typingStats.correctChars + score.correctChars,
-      comparedChars: typingStats.comparedChars + score.comparedChars,
-      mistakes: typingStats.mistakes + score.mistakes,
-    };
-    setTypingStats(nextTypingStats);
-
-    if (!exact) {
-      setMessage(`정확도 ${score.accuracy}%예요. 틀린 부분을 고쳐서 다시 확인해요.`);
-      showWrongFeedback();
-      return;
-    }
-
-    playSuccess();
-    if (entryIndex + 1 < currentTypingItems.length) {
-      setEntryIndex((value) => value + 1);
-      setEntryValue('');
-      setMessage('좋아요. 다음 글도 이어서 입력해요.');
-    } else {
-      advanceTypingStage(nextTypingStats);
-    }
-  };
-
-  const handleTypingKeyDown = (event: ReactKeyboardEvent<HTMLTextAreaElement | HTMLInputElement>) => {
-    if (event.key === 'Enter' && (stage === 'words' || event.ctrlKey || event.metaKey)) {
-      event.preventDefault();
-      handleTypingSubmit();
-    }
-  };
-
-  const handleVirtualKeyClick = (key: DisplayKey) => {
-    if (stage !== 'position' || !key.letter) return;
-    handlePositionAnswer(getKeyLabel(track, key.letter), key.code);
   };
 
   useEffect(() => {
-    if (stage !== 'position') return;
-    const handleKeyDown = (event: KeyboardEvent) => {
-      if (event.defaultPrevented) return;
-      const target = event.target as HTMLElement | null;
-      if (target?.tagName === 'INPUT' || target?.tagName === 'TEXTAREA') return;
-      const key = KEY_BY_CODE[event.code];
-      if (!key) return;
-      event.preventDefault();
-      handlePositionAnswer(getKeyLabel(track, key), event.code);
+    if (done) return;
+    const handler = (e: KeyboardEvent) => {
+      const display =
+        e.key === ' '
+          ? 'Space'
+          : ['Control', 'Shift', 'Alt', 'Tab', 'Enter', 'Backspace', 'CapsLock'].includes(e.key)
+          ? e.key === 'Control'
+            ? 'Ctrl'
+            : e.key
+          : e.key === 'ArrowRight'
+          ? '→'
+          : e.key.length === 1
+          ? e.key.toUpperCase()
+          : e.key;
+      setPressedKey(display);
+      window.setTimeout(() => setPressedKey((p) => (p === display ? null : p)), 250);
+
+      if (matches(currentStep, e)) {
+        if (currentStep.matchKey === 'Tab') e.preventDefault();
+        if (e.ctrlKey || e.altKey || e.key === 'Backspace' || e.key === ' ' || e.key === 'Enter') e.preventDefault();
+        if (currentStep.type === 'copy') {
+          const liveSelection = window.getSelection()?.toString().trim() ?? '';
+          if (selectedText.trim() !== SHORTCUT_TEXT && liveSelection !== SHORTCUT_TEXT) {
+            playFail();
+            setShake(true);
+            window.setTimeout(() => setShake(false), 400);
+            return;
+          }
+          playSuccess();
+          setSelectedText(SHORTCUT_TEXT);
+          setCopiedText(SHORTCUT_TEXT);
+          navigator.clipboard?.writeText(SHORTCUT_TEXT).catch(() => {});
+        } else if (currentStep.type === 'paste') {
+          if (!copiedText) {
+            playFail();
+            setShake(true);
+            window.setTimeout(() => setShake(false), 400);
+            return;
+          }
+          playSuccess();
+          setPastedText(copiedText);
+        } else {
+          playSuccess();
+        }
+        finishCurrentStep();
+      } else if (isExpectedModifierPrelude(currentStep, e)) {
+        return;
+      } else if (
+        e.key.length === 1 ||
+        ['Enter', 'Backspace', 'Tab', ' ', 'Control', 'Alt'].includes(e.key) ||
+        e.code.startsWith('Key') ||
+        e.code.startsWith('Digit')
+      ) {
+        playFail();
+        setShake(true);
+        window.setTimeout(() => setShake(false), 400);
+      }
     };
-    window.addEventListener('keydown', handleKeyDown);
-    return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [stage, track, currentQuestion]);
+    window.addEventListener('keydown', handler);
+    return () => window.removeEventListener('keydown', handler);
+  }, [currentStep, stepIndex, done, copiedText, selectedText, markComplete, navigate]);
+
+  const handleTextSelection = () => {
+    const selection = window.getSelection()?.toString().trim() ?? '';
+    if (selection === SHORTCUT_TEXT) {
+      setSelectedText(selection);
+      playSuccess();
+    }
+  };
+
+  const markShortcutTextSelected = () => {
+    setSelectedText(SHORTCUT_TEXT);
+    playSuccess();
+  };
+
+  const isHighlighted = (display: string) => {
+    return currentStep.display.toLowerCase().split(' + ').some((part) => part.trim().toLowerCase() === display.toLowerCase());
+  };
+
+  const isPressed = (display: string) => pressedKey?.toUpperCase() === display.toUpperCase();
 
   return (
-    <div className="w-full max-w-7xl mx-auto flex flex-col gap-6 md:pt-8">
-      <section className="bg-surface-container-lowest rounded-xl border-2 border-primary-fixed p-5 md:p-8 shadow-sm">
-        <div className="flex flex-col gap-5 lg:flex-row lg:items-center lg:justify-between">
-          <div>
-            <p className="font-label-bold text-label-bold text-primary">한컴타자식 키보드 학습</p>
-            <h1 className="mt-2 font-display-lg text-display-lg text-on-surface">자리부터 긴 글까지 차근차근 익혀요</h1>
-            <p className="mt-3 max-w-3xl font-body-lg text-body-lg text-on-surface-variant">
-              먼저 자판 위치를 퀴즈로 외우고, 낱말과 문장 입력으로 타자 실력을 확인해요. iPad에서는 화면 버튼만으로 자리 연습을 할 수 있어요.
-            </p>
+    <div className="flex-grow flex flex-col items-center justify-center gap-8 w-full max-w-7xl mx-auto relative md:pt-12">
+      <div
+        className={`relative w-full max-w-4xl bg-surface-container-highest rounded-xl p-8 border-b-[8px] border-surface-variant shadow-sm flex flex-col items-center text-center transition-transform ${
+          shake ? '' : ''
+        }`}
+        style={{ animation: shake ? 'shake 0.4s ease-in-out' : undefined }}
+      >
+        <span className="font-label-bold text-label-bold text-primary mb-2 uppercase tracking-widest">
+          {done ? '완료' : `미션 ${stepIndex + 1} / ${STEPS.length}`}
+        </span>
+        <div className="flex items-center justify-center gap-3 flex-wrap">
+          <h1 className="font-display-lg text-display-lg text-on-surface">
+            {done ? '참 잘했어요! 모든 미션 완료!' : currentStep.prompt}
+          </h1>
+          {!done && <SpeakButton text={`${currentStep.prompt} ${currentStep.hint}`} />}
+        </div>
+
+        {!done && (
+          <p className="mt-3 font-body-lg text-body-lg text-on-surface-variant max-w-2xl">{currentStep.hint}</p>
+        )}
+
+        <div className="mt-6 w-full max-w-md">
+          <div className="flex justify-between text-sm font-label-bold text-on-surface-variant mb-2">
+            <span>진행도</span>
+            <span>
+              {Math.min(stepIndex, STEPS.length)} / {STEPS.length}
+            </span>
           </div>
-          <div className="grid grid-cols-2 gap-3 min-w-[260px]">
-            {(['ko', 'en'] as TrackId[]).map((trackId) => {
-              const selected = track === trackId;
-              const complete = !!trackResults[trackId];
-              return (
-                <button
-                  key={trackId}
-                  type="button"
-                  onClick={() => {
-                    playClick();
-                    resetTrackPractice(trackId);
-                  }}
-                  className={cn(
-                    'rounded-xl border-2 px-4 py-4 text-left transition-all',
-                    selected
-                      ? 'border-primary bg-primary text-on-primary shadow-[0_4px_0_rgba(0,78,118,0.45)]'
-                      : complete
-                      ? 'border-secondary bg-secondary-container text-on-secondary-container'
-                      : 'border-surface-container-highest bg-surface-container-low text-on-surface',
-                  )}
+          <div className="w-full h-4 bg-surface-container-low rounded-full overflow-hidden shadow-inner">
+            <div
+              className="h-full bg-secondary rounded-full transition-all duration-500"
+              style={{ width: `${done ? 100 : progress}%` }}
+            />
+          </div>
+        </div>
+
+        {(currentStep.type === 'copy' || currentStep.type === 'paste' || copiedText || pastedText) && (
+          <div className="mt-6 w-full max-w-2xl grid grid-cols-1 md:grid-cols-2 gap-4">
+            <div
+              tabIndex={0}
+              onMouseUp={handleTextSelection}
+              onKeyUp={handleTextSelection}
+              className={`rounded-xl p-4 border-2 text-left ${
+                currentStep.type === 'copy'
+                  ? 'border-primary bg-primary-container/30 ring-4 ring-primary-fixed'
+                  : 'border-surface-container-highest bg-surface-container-low'
+              }`}
+              aria-label="복사할 문장"
+            >
+              <p className="font-label-bold text-label-bold text-primary mb-2">복사할 문장</p>
+              <p className="font-body-xl text-body-xl text-on-surface bg-surface-container-lowest rounded-lg p-3 select-text">
+                {SHORTCUT_TEXT}
+              </p>
+              {currentStep.type === 'copy' && (
+                <div
+                  className={`mt-3 rounded-lg p-3 font-label-bold text-sm ${
+                    selectedText === SHORTCUT_TEXT
+                      ? 'bg-secondary-container text-on-secondary-container'
+                      : 'bg-tertiary-container text-on-tertiary-container'
+                  }`}
                 >
-                  <span className="material-symbols-outlined block text-3xl" style={{ fontVariationSettings: complete ? "'FILL' 1" : "'FILL' 0" }}>
-                    {complete ? 'check_circle' : 'keyboard'}
-                  </span>
-                  <span className="mt-2 block font-label-bold text-label-bold">{TRACKS[trackId].title}</span>
+                  {selectedText === SHORTCUT_TEXT
+                    ? '좋아요! 문장이 선택됐어요. 이제 Ctrl + C를 눌러 복사해요.'
+                    : '1단계: 문장 위에서 마우스를 누른 채 끝까지 드래그해서 선택해요.'}
+                </div>
+              )}
+              {currentStep.type === 'copy' && selectedText !== SHORTCUT_TEXT && (
+                <button
+                  type="button"
+                  onClick={markShortcutTextSelected}
+                  className="mt-3 px-4 py-2 rounded-full bg-primary text-on-primary font-label-bold text-sm shadow-[0_2px_0_rgb(0,78,118)] active:translate-y-[2px] active:shadow-none transition-all"
+                >
+                  드래그가 어려워요: 선택한 것으로 연습하기
                 </button>
-              );
-            })}
+              )}
+              <p className="mt-2 text-sm text-on-surface-variant">
+                {copiedText ? '복사 완료! 이제 빈 칸에 붙여넣어 봐요.' : '2단계: 선택한 뒤 Ctrl + C를 누르면 문장이 복사돼요.'}
+              </p>
+            </div>
+            <div
+              className={`rounded-xl p-4 border-2 text-left ${
+                currentStep.type === 'paste'
+                  ? 'border-primary bg-primary-container/30 ring-4 ring-primary-fixed'
+                  : 'border-surface-container-highest bg-surface-container-low'
+              }`}
+            >
+              <label htmlFor="paste_target" className="font-label-bold text-label-bold text-primary mb-2 block">
+                붙여넣을 칸
+              </label>
+              <textarea
+                id="paste_target"
+                value={pastedText}
+                onChange={(e) => setPastedText(e.target.value)}
+                className="w-full min-h-24 rounded-lg border-2 border-outline-variant bg-surface-container-lowest p-3 font-body-lg text-body-lg outline-none focus:border-primary focus:ring-4 focus:ring-primary-fixed"
+                placeholder="Ctrl + V를 누르면 여기에 문장이 들어와요"
+                aria-label="붙여넣기 연습 칸"
+              />
+            </div>
+          </div>
+        )}
+
+        {done && (
+          <div className="absolute -top-8 -right-4 bg-secondary text-on-secondary rounded-full p-4 shadow-[0_8px_16px_rgba(45,106,68,0.3)] transform rotate-12 flex items-center justify-center border-4 border-surface-container-lowest">
+            <span className="material-symbols-outlined text-5xl" style={{ fontVariationSettings: "'FILL' 1" }}>
+              check_circle
+            </span>
+          </div>
+        )}
+      </div>
+
+      <div className="w-full max-w-5xl bg-surface-container-low rounded-xl p-gutter border-b-[6px] border-surface-dim shadow-inner overflow-x-auto">
+        <div className="flex flex-col gap-unit min-w-[900px] justify-center items-center">
+          {/* 숫자줄 */}
+          <div className="flex justify-center gap-unit w-full max-w-4xl">
+            {[1, 2, 3, 4, 5, 6, 7, 8, 9, 0].map((n) => (
+              <KeyCap key={`num-${n}`} label={String(n)} highlighted={isHighlighted(String(n))} pressed={isPressed(String(n))} />
+            ))}
+            <KeyCap label="Backspace" wide highlighted={isHighlighted('Backspace')} pressed={isPressed('Backspace')} />
+          </div>
+
+          {/* QWERTY */}
+          <div className="flex justify-center gap-unit w-full max-w-4xl">
+            <KeyCap label="Tab" wide highlighted={isHighlighted('Tab')} pressed={isPressed('Tab')} />
+            {TopRow.map((char) => (
+              <KeyCap key={char} label={char} highlighted={isHighlighted(char)} pressed={isPressed(char)} />
+            ))}
+          </div>
+
+          {/* 홈 행 */}
+          <div className="flex justify-center gap-unit w-full max-w-4xl pl-6">
+            <KeyCap label="CapsLock" extraWide highlighted={isHighlighted('CapsLock')} pressed={isPressed('CapsLock')} />
+            {HomeRow.map((char) => (
+              <KeyCap key={char} label={char} highlighted={isHighlighted(char)} pressed={isPressed(char)} />
+            ))}
+            <KeyCap label="Enter" extraWide highlighted={isHighlighted('Enter')} pressed={isPressed('Enter')} />
+          </div>
+
+          {/* 아래 행 */}
+          <div className="flex justify-center gap-unit w-full max-w-4xl">
+            <KeyCap label="Shift" wide highlighted={isHighlighted('Shift')} pressed={isPressed('Shift')} />
+            {BottomRow.map((char) => (
+              <KeyCap key={char} label={char} highlighted={isHighlighted(char)} pressed={isPressed(char)} />
+            ))}
+            <KeyCap label="/" highlighted={isHighlighted('/')} pressed={isPressed('/')} />
+            <KeyCap label="Shift" wide highlighted={isHighlighted('Shift')} pressed={isPressed('Shift')} />
+          </div>
+
+          {/* 스페이스 행 + 컨트롤/알트 */}
+          <div className="flex justify-center gap-unit mt-2 w-full max-w-4xl">
+            <KeyCap label="Ctrl" wide highlighted={isHighlighted('Ctrl')} pressed={isPressed('Ctrl')} />
+            <KeyCap label="Alt" wide highlighted={isHighlighted('Alt')} pressed={isPressed('Alt')} />
+            <KeyCap label="Space" superWide highlighted={isHighlighted('Space')} pressed={isPressed('Space')} />
+            <KeyCap label="Alt" wide highlighted={isHighlighted('Alt')} pressed={isPressed('Alt')} />
+            <KeyCap label="Ctrl" wide highlighted={isHighlighted('Ctrl')} pressed={isPressed('Ctrl')} />
+          </div>
+
+          {/* 방향키 */}
+          <div className="flex justify-center gap-unit mt-2 w-full max-w-4xl">
+            <KeyCap label="←" />
+            <KeyCap label="↑" />
+            <KeyCap label="↓" />
+            <KeyCap label="→" highlighted={isHighlighted('→')} pressed={isPressed('→')} />
           </div>
         </div>
-      </section>
+      </div>
 
-      <section className="grid gap-6 xl:grid-cols-[minmax(0,1fr)_360px]">
-        <div className="flex flex-col gap-6">
-          <div
-            className="bg-surface-container-highest rounded-xl p-5 md:p-8 border-b-[8px] border-surface-variant shadow-sm"
-            style={{ animation: shake ? 'shake 0.4s ease-in-out' : undefined }}
+      <div className="flex gap-3 flex-wrap justify-center">
+        <button
+          onClick={() => {
+            playClick();
+            setStepIndex(0);
+            setDone(false);
+            setCopiedText('');
+            setPastedText('');
+            setSelectedText('');
+            completedRef.current = false;
+            startedAtRef.current = Date.now();
+          }}
+          className="text-primary hover:text-on-primary-container hover:bg-primary-container px-6 py-3 rounded-full font-label-bold text-label-bold transition-colors"
+        >
+          처음부터 다시 시작
+        </button>
+        {!done && stepIndex > 0 && (
+          <button
+            onClick={() => {
+              playClick();
+              setStepIndex((i) => Math.max(0, i - 1));
+            }}
+            className="text-on-surface-variant hover:bg-surface-container-high px-6 py-3 rounded-full font-label-bold text-label-bold transition-colors"
           >
-            <div className="flex flex-wrap items-center justify-between gap-4">
-              <div>
-                <p className="font-label-bold text-label-bold text-primary">{TRACKS[track].title}</p>
-                <h2 className="font-headline-md text-headline-md text-on-surface">
-                  {stage === 'position' && currentQuestion ? currentQuestion.roundTitle : STAGES.find((item) => item.id === stage)?.title ?? '트랙 완료'}
-                </h2>
-              </div>
-              <SpeakButton
-                text={
-                  stage === 'position' && currentQuestion
-                    ? `${TRACKS[track].title}. ${currentQuestion.roundTitle}. ${currentQuestion.roundHint}`
-                    : `${TRACKS[track].title}. ${message}`
-                }
-              />
-            </div>
-
-            <div className="mt-5 grid gap-3 md:grid-cols-4">
-              {STAGES.map((item, index) => {
-                const done = stage === 'complete' || index < activeStageIndex;
-                const active = item.id === stage;
-                return (
-                  <div
-                    key={item.id}
-                    className={cn(
-                      'rounded-lg border px-3 py-3 font-label-bold text-sm flex items-center gap-2',
-                      active
-                        ? 'bg-primary text-on-primary border-primary'
-                        : done
-                        ? 'bg-secondary-container text-on-secondary-container border-secondary-fixed-dim'
-                        : 'bg-surface-container-lowest text-on-surface-variant border-surface-container-highest',
-                    )}
-                  >
-                    <span className="material-symbols-outlined text-xl" style={{ fontVariationSettings: done ? "'FILL' 1" : "'FILL' 0" }}>
-                      {done ? 'check_circle' : item.icon}
-                    </span>
-                    {item.title}
-                  </div>
-                );
-              })}
-            </div>
-
-            <div className="mt-5 h-4 w-full overflow-hidden rounded-full bg-surface-container-low shadow-inner">
-              <div className="h-full rounded-full bg-secondary transition-all duration-500" style={{ width: `${overallProgress}%` }} />
-            </div>
-
-            {stage === 'position' && currentQuestion && (
-              <div className="mt-8 grid gap-6 lg:grid-cols-[1fr_280px]">
-                <div>
-                  <p className="font-body-xl text-body-xl text-on-surface">
-                    강조된 빈 키에는 어떤 {track === 'ko' ? '자모' : '알파벳'}가 들어갈까요?
-                  </p>
-                  <p className="mt-2 font-body-lg text-body-lg text-on-surface-variant">
-                    {currentQuestion.roundHint} {currentQuestion.key.finger} 자리예요.
-                  </p>
-                  <p className="mt-3 font-label-bold text-label-bold text-primary">
-                    소단계 {positionRoundProgress.current} / {positionRoundProgress.total}
-                  </p>
-                </div>
-                <div className="grid grid-cols-2 gap-3">
-                  {currentQuestion.options.map((option) => (
-                    <button
-                      key={option}
-                      type="button"
-                      onClick={() => handlePositionAnswer(option)}
-                      className="min-h-[72px] rounded-xl bg-surface-container-lowest border-2 border-outline-variant text-on-surface font-display-lg text-display-lg shadow-[0_4px_0_rgba(112,120,129,0.35)] active:translate-y-1 active:shadow-none transition-all hover:border-primary"
-                    >
-                      {option}
-                    </button>
-                  ))}
-                </div>
-              </div>
-            )}
-
-            {(stage === 'words' || stage === 'short' || stage === 'long') && (
-              <TypingPracticePanel
-                stage={stage}
-                target={currentTarget}
-                index={entryIndex}
-                total={currentTypingItems.length}
-                value={entryValue}
-                onValue={setEntryValue}
-                onSubmit={handleTypingSubmit}
-                onKeyDown={handleTypingKeyDown}
-              />
-            )}
-
-            {stage === 'complete' && (
-              <div className="mt-8 rounded-xl bg-surface-container-lowest border-2 border-secondary-fixed-dim p-6 text-center">
-                <span className="material-symbols-outlined text-6xl text-secondary" style={{ fontVariationSettings: "'FILL' 1" }}>
-                  workspace_premium
-                </span>
-                <h2 className="mt-3 font-headline-md text-headline-md text-on-surface">{TRACKS[track].title} 완료</h2>
-                <p className="mt-2 font-body-lg text-body-lg text-on-surface-variant">{message}</p>
-                <div className="mt-5 flex flex-wrap justify-center gap-3">
-                  {!bothTracksDone && (
-                    <button
-                      type="button"
-                      onClick={() => {
-                        playClick();
-                        resetTrackPractice(getNextIncompleteTrack(trackResults, track));
-                      }}
-                      className="rounded-full bg-primary px-6 py-3 font-label-bold text-label-bold text-on-primary shadow-[0_3px_0_rgba(0,78,118,0.55)] active:translate-y-[2px] active:shadow-none"
-                    >
-                      다른 트랙 시작
-                    </button>
-                  )}
-                  <button
-                    type="button"
-                    onClick={() => {
-                      playClick();
-                      resetTrackPractice(track);
-                    }}
-                    className="rounded-full bg-surface-container-high px-6 py-3 font-label-bold text-label-bold text-on-surface"
-                  >
-                    이 트랙 다시 하기
-                  </button>
-                </div>
-              </div>
-            )}
-
-            <p className="mt-6 rounded-lg bg-surface-container-lowest px-4 py-3 font-body-lg text-body-lg text-on-surface-variant">
-              {message}
-            </p>
-          </div>
-
-          <VirtualKeyboard
-            track={track}
-            highlightedCode={stage === 'position' ? currentQuestion?.key.code : undefined}
-            pressedCode={pressedCode}
-            wrongCode={wrongCode}
-            blankCode={stage === 'position' ? currentQuestion?.key.code : undefined}
-            onKeyClick={handleVirtualKeyClick}
-          />
-        </div>
-
-        <aside className="flex flex-col gap-4">
-          <MetricCard icon="location_on" label="자리 정확도" value={`${positionAccuracy}%`} detail={`${positionCorrect} / ${positionTotal}`} />
-          <MetricCard icon="spellcheck" label="타자 정확도" value={`${typingAccuracy}%`} detail={`오타 ${typingStats.mistakes}개`} />
-          <MetricCard icon="speed" label="현재 타수" value={`${typingCpm}`} detail="분당 글자 수" />
-          <div className="rounded-xl bg-surface-container-lowest border-2 border-surface-container-highest p-5">
-            <p className="font-label-bold text-label-bold text-primary mb-3">트랙 완료 기록</p>
-            {(['ko', 'en'] as TrackId[]).map((trackId) => {
-              const result = trackResults[trackId];
-              return (
-                <div key={trackId} className="flex items-center justify-between gap-3 border-t border-outline-variant/40 py-3 first:border-t-0">
-                  <span className="font-label-bold text-sm text-on-surface">{TRACKS[trackId].title}</span>
-                  <span className={cn('rounded-full px-3 py-1 text-sm font-label-bold', result ? 'bg-secondary-container text-on-secondary-container' : 'bg-surface-container text-on-surface-variant')}>
-                    {result ? `${result.positionAccuracy}% / ${result.cpm}타` : '진행 전'}
-                  </span>
-                </div>
-              );
-            })}
-          </div>
-        </aside>
-      </section>
+            ← 이전 미션
+          </button>
+        )}
+        {!done && (
+          <button
+            onClick={() => {
+              playClick();
+              if (stepIndex + 1 >= STEPS.length) return;
+              setStepIndex((i) => Math.min(STEPS.length - 1, i + 1));
+            }}
+            className="text-on-surface-variant hover:bg-surface-container-high px-6 py-3 rounded-full font-label-bold text-label-bold transition-colors"
+          >
+            건너뛰기 →
+          </button>
+        )}
+      </div>
 
       <style>{`
         @keyframes shake {
@@ -669,171 +510,57 @@ export function KeyboardPractice() {
           60% { transform: translateX(-6px); }
           80% { transform: translateX(6px); }
         }
+        @keyframes keyglow {
+          0% { box-shadow: 0 0 0 0 rgba(0,100,150,0.6); }
+          100% { box-shadow: 0 0 0 16px rgba(0,100,150,0); }
+        }
       `}</style>
     </div>
   );
 }
 
-function TypingPracticePanel({
-  stage,
-  target,
-  index,
-  total,
-  value,
-  onValue,
-  onSubmit,
-  onKeyDown,
-}: {
-  stage: StageId;
-  target: string;
-  index: number;
-  total: number;
-  value: string;
-  onValue: (value: string) => void;
-  onSubmit: () => void;
-  onKeyDown: (event: ReactKeyboardEvent<HTMLTextAreaElement | HTMLInputElement>) => void;
-}) {
-  const score = scoreText(value, target);
-  const isLong = stage === 'long';
-  return (
-    <div className="mt-8 grid gap-5">
-      <div className="rounded-xl bg-surface-container-lowest border-2 border-primary-fixed p-5">
-        <p className="font-label-bold text-label-bold text-primary">
-          {STAGES.find((item) => item.id === stage)?.title} {index + 1} / {total}
-        </p>
-        <p className="mt-3 font-headline-md text-headline-md text-on-surface break-words">{target}</p>
-      </div>
-      <div>
-        <label htmlFor="keyboard_typing_input" className="font-label-bold text-label-bold text-on-surface">
-          그대로 입력하기
-        </label>
-        {isLong ? (
-          <textarea
-            id="keyboard_typing_input"
-            value={value}
-            onChange={(event) => onValue(event.target.value)}
-            onKeyDown={onKeyDown}
-            className="mt-2 min-h-40 w-full rounded-xl border-2 border-outline-variant bg-surface-container-lowest p-4 font-body-xl text-body-xl outline-none focus:border-primary focus:ring-4 focus:ring-primary-fixed"
-            autoComplete="off"
-            autoCorrect="off"
-            spellCheck={false}
-          />
-        ) : (
-          <input
-            id="keyboard_typing_input"
-            value={value}
-            onChange={(event) => onValue(event.target.value)}
-            onKeyDown={onKeyDown}
-            className="mt-2 h-16 w-full rounded-xl border-2 border-outline-variant bg-surface-container-lowest px-4 font-body-xl text-body-xl outline-none focus:border-primary focus:ring-4 focus:ring-primary-fixed"
-            autoComplete="off"
-            autoCorrect="off"
-            spellCheck={false}
-          />
-        )}
-      </div>
-      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-        <div className="flex flex-wrap gap-2 text-sm font-label-bold text-on-surface-variant">
-          <span className="rounded-full bg-surface-container px-3 py-2">현재 정확도 {score.accuracy}%</span>
-          <span className="rounded-full bg-surface-container px-3 py-2">현재 오타 {score.mistakes}개</span>
-        </div>
-        <button
-          type="button"
-          onClick={onSubmit}
-          className="rounded-full bg-primary px-8 py-4 font-label-bold text-label-bold text-on-primary shadow-[0_4px_0_rgba(0,78,118,0.55)] active:translate-y-[3px] active:shadow-none"
-        >
-          확인
-        </button>
-      </div>
-    </div>
-  );
+interface KeyCapProps {
+  label: string;
+  wide?: boolean;
+  extraWide?: boolean;
+  superWide?: boolean;
+  highlighted?: boolean;
+  pressed?: boolean;
 }
 
-function VirtualKeyboard({
-  track,
-  highlightedCode,
-  pressedCode,
-  wrongCode,
-  blankCode,
-  onKeyClick,
-}: {
-  track: TrackId;
-  highlightedCode?: string;
-  pressedCode: string | null;
-  wrongCode: string | null;
-  blankCode?: string;
-  onKeyClick: (key: DisplayKey) => void;
-}) {
-  return (
-    <div className="w-full overflow-x-auto rounded-xl bg-surface-container-low p-4 md:p-6 border-b-[6px] border-surface-dim shadow-inner">
-      <div className="mx-auto flex min-w-[760px] max-w-5xl flex-col items-center gap-2">
-        {KEYBOARD_ROWS.map((row, rowIndex) => (
-          <div key={rowIndex} className="flex justify-center gap-2">
-            {row.map((key) => {
-              const active = highlightedCode === key.code;
-              const pressed = pressedCode === key.code;
-              const wrong = wrongCode === key.code;
-              const label = key.letter ? getKeyLabel(track, key.letter) : key.label;
-              return (
-                <button
-                  key={`${rowIndex}-${key.code}`}
-                  type="button"
-                  onClick={() => onKeyClick(key)}
-                  disabled={!key.letter}
-                  aria-label={key.letter ? `${TRACKS[track].shortTitle} ${label} 자리` : key.label}
-                  className={cn(
-                    'relative flex h-14 flex-shrink-0 flex-col items-center justify-center rounded-lg border-b-4 font-label-bold text-label-bold transition-all',
-                    key.width === 'space'
-                      ? 'w-64'
-                      : key.width === 'extraWide'
-                      ? 'w-24'
-                      : key.width === 'wide'
-                      ? 'w-18'
-                      : 'w-12',
-                    key.letter ? 'cursor-pointer' : 'cursor-default',
-                    active
-                      ? 'scale-105 bg-primary text-on-primary border-on-primary-fixed-variant shadow-[0_8px_16px_rgba(0,100,150,0.35)]'
-                      : wrong
-                      ? 'bg-error-container text-on-error-container border-error'
-                      : 'bg-surface-container-lowest text-on-surface-variant border-outline-variant',
-                    pressed && 'translate-y-1 border-b-0',
-                  )}
-                >
-                  {key.letter && blankCode === key.code ? (
-                    <span className="text-2xl">?</span>
-                  ) : key.letter ? (
-                    <>
-                      <span>{label}</span>
-                      {track === 'ko' && <span className="text-[11px] text-current/70">{key.letter.en}</span>}
-                    </>
-                  ) : (
-                    <span className="text-sm">{key.label}</span>
-                  )}
-                  {key.letter?.anchor && <span className="absolute bottom-1 h-1 w-5 rounded-full bg-current/40" />}
-                </button>
-              );
-            })}
-          </div>
-        ))}
-      </div>
-    </div>
-  );
-}
+function KeyCap({ label, wide, extraWide, superWide, highlighted, pressed }: KeyCapProps) {
+  const widthClass = superWide
+    ? 'w-72'
+    : extraWide
+    ? 'w-28'
+    : wide
+    ? 'w-20'
+    : label.length > 1 && !['→', '←', '↑', '↓'].includes(label)
+    ? 'w-20'
+    : 'w-12';
+  const baseHeight = 'h-14';
 
-function MetricCard({ icon, label, value, detail }: { icon: string; label: string; value: string; detail: string }) {
+  let classes = `${widthClass} ${baseHeight} rounded-lg border-b-4 flex items-center justify-center font-label-bold text-label-bold shadow-sm flex-shrink-0 transition-all relative`;
+
+  if (highlighted) {
+    classes +=
+      ' bg-primary text-on-primary border-on-primary-fixed-variant scale-105 z-10 shadow-[0_8px_16px_rgba(0,100,150,0.4)]';
+  } else {
+    classes += ' bg-surface-container-lowest border-outline-variant text-on-surface-variant';
+  }
+
+  if (pressed) {
+    classes += ' translate-y-1 border-b-0';
+  }
+
   return (
-    <div className="rounded-xl bg-surface-container-lowest border-2 border-surface-container-highest p-5">
-      <div className="flex items-center gap-3">
-        <div className="flex h-12 w-12 items-center justify-center rounded-lg bg-primary-container text-on-primary-container">
-          <span className="material-symbols-outlined" style={{ fontVariationSettings: "'FILL' 1" }}>
-            {icon}
-          </span>
-        </div>
-        <div>
-          <p className="font-label-bold text-sm text-on-surface-variant">{label}</p>
-          <p className="font-headline-md text-headline-md text-on-surface">{value}</p>
-        </div>
-      </div>
-      <p className="mt-3 font-body-lg text-sm text-on-surface-variant">{detail}</p>
+    <div
+      className={classes}
+      style={pressed && highlighted ? { animation: 'keyglow 0.4s ease-out' } : undefined}
+      aria-label={`키 ${label}`}
+    >
+      {label}
+      {highlighted && <div className="absolute inset-0 rounded-lg bg-white opacity-20 blur-md pointer-events-none" />}
     </div>
   );
 }

@@ -27,6 +27,7 @@ export interface StudyResultDetails {
 
 const TARGET_SECONDS: Record<ModuleKey, { excellent: number; good: number }> = {
   keyboard: { excellent: 120, good: 240 },
+  typing: { excellent: 240, good: 480 },
   mouse: { excellent: 90, good: 180 },
   browser: { excellent: 180, good: 360 },
   login: { excellent: 120, good: 240 },

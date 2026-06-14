@@ -10,7 +10,7 @@ export const STORAGE_KEYS = {
 export const GUEST_USER_ID = 'digischool_guest';
 export const GUEST_PROFILE_IMAGE_SRC = '/guest-profile-avatar.svg';
 
-export type ModuleKey = 'keyboard' | 'mouse' | 'browser' | 'login';
+export type ModuleKey = 'keyboard' | 'typing' | 'mouse' | 'browser' | 'login';
 
 export interface ModuleMeta {
   key: ModuleKey;
@@ -32,6 +32,16 @@ export const MODULES: ModuleMeta[] = [
     route: '/keyboard',
     resultRoute: '/result/keyboard',
     description: '키보드의 여러 키를 익혀봐요!',
+    color: 'primary',
+  },
+  {
+    key: 'typing',
+    label: '자판/타자 학습',
+    shortLabel: '타자',
+    icon: 'keyboard_alt',
+    route: '/keyboard-typing',
+    resultRoute: '/result/typing',
+    description: '한글과 영어 자판 위치와 타자를 연습해요!',
     color: 'primary',
   },
   {

@@ -22,7 +22,7 @@ export function Result() {
   const meta = getModule(module);
   const studyResult = getStudyResult(module);
   const keyboardTrackEntries =
-    module === 'keyboard' && studyResult?.details?.keyboardTracks
+    module === 'typing' && studyResult?.details?.keyboardTracks
       ? (['ko', 'en'] as const)
           .map((track) => ({ track, result: studyResult.details?.keyboardTracks?.[track] }))
           .filter((entry): entry is { track: 'ko' | 'en'; result: NonNullable<typeof entry.result> } => !!entry.result)

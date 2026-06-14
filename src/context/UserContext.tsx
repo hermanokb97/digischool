@@ -8,12 +8,7 @@ export interface User {
   id: string;
   nickname: string;
   avatar: AvatarId;
-  progress: {
-    keyboard: boolean;
-    mouse: boolean;
-    browser: boolean;
-    login: boolean;
-  };
+  progress: Record<ModuleKey, boolean>;
   lastStudiedAt?: Record<ModuleKey, string | undefined>;
   createdAt: string;
   isGuest?: boolean;
@@ -37,8 +32,14 @@ const UserContext = createContext<UserContextType | undefined>(undefined);
 
 const DEFAULT_USERS: User[] = [];
 
-function createEmptyProgress(): User['progress'] {
-  return { keyboard: false, mouse: false, browser: false, login: false };
+function createEmptyProgress(progress?: Partial<Record<ModuleKey, boolean>>): User['progress'] {
+  return {
+    keyboard: !!progress?.keyboard,
+    typing: !!progress?.typing,
+    mouse: !!progress?.mouse,
+    browser: !!progress?.browser,
+    login: !!progress?.login,
+  };
 }
 
 function createGuestUser(): User {
@@ -59,13 +60,22 @@ function isLegacyDefaultUser(user: User): boolean {
   );
 }
 
+function normalizeUser(user: User): User {
+  return {
+    ...user,
+    progress: createEmptyProgress(user.progress),
+  };
+}
+
 function normalizeStoredUsers(value: unknown): User[] {
   if (!Array.isArray(value)) return DEFAULT_USERS;
-  return value.filter((user): user is User => {
-    if (!user || typeof user !== 'object') return false;
-    const candidate = user as User;
-    return !candidate.isGuest && !isGuestUserId(candidate.id) && !isLegacyDefaultUser(candidate);
-  });
+  return value
+    .filter((user): user is User => {
+      if (!user || typeof user !== 'object') return false;
+      const candidate = user as User;
+      return !candidate.isGuest && !isGuestUserId(candidate.id) && !isLegacyDefaultUser(candidate);
+    })
+    .map(normalizeUser);
 }
 
 export function UserProvider({ children }: { children: ReactNode }) {
@@ -96,15 +106,17 @@ export function UserProvider({ children }: { children: ReactNode }) {
     if (storedCurrentUser) {
       try {
         const parsedCurrentUser = JSON.parse(storedCurrentUser) as User;
+        const storedUser = loadedUsers.find((candidate) => candidate.id === parsedCurrentUser.id);
         const canRestore =
           !parsedCurrentUser.isGuest &&
           !isGuestUserId(parsedCurrentUser.id) &&
           !isLegacyDefaultUser(parsedCurrentUser) &&
-          loadedUsers.some((storedUser) => storedUser.id === parsedCurrentUser.id);
+          !!storedUser;
 
-        if (canRestore) {
+        if (canRestore && storedUser) {
           setGuestSession(false);
-          setUser(parsedCurrentUser);
+          setUser(storedUser);
+          localStorage.setItem(STORAGE_KEYS.currentUser, JSON.stringify(storedUser));
         } else {
           localStorage.removeItem(STORAGE_KEYS.currentUser);
           setGuestSession(false);
